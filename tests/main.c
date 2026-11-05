@@ -16,6 +16,7 @@ int main(int argc, char *argv[]) {
     tests_list_only = options < 0;
 
     UNITY_BEGIN();
+    error_tests();
     example_tests();
     return tests_list_only ? 0 : UNITY_END();
 }

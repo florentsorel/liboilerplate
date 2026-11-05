@@ -7,8 +7,8 @@
 # make MODE=release ...       optimized build, without sanitizers
 # make clean
 
-# Name of the library: build/<mode>/lib$(LIB).a. Rename it along with
-# include/mylib/ and the mylib_ prefix (see the README).
+# Name of the library: the archive is build/<mode>/lib$(LIB).a, the public
+# headers are in include/$(LIB)/ and every public name starts with $(LIB)_.
 LIB = mylib
 
 CC    = cc

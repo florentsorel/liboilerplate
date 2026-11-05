@@ -9,17 +9,21 @@ and strict warnings.
 ```
 .
 ├── include/mylib/     Public headers, included as <mylib/example.h>
+│   ├── error.h        Error codes shared by the whole library
 │   └── example.h
 ├── src/               Library implementation, archived into libmylib.a
+│   ├── error.c
 │   └── example.c
 ├── examples/          A program using the library, as its users would
 │   └── main.c
 ├── tests/             Unit tests
 │   ├── main.c         Test runner
 │   ├── tests.h        RUN() macro and one suite function per module
+│   ├── error_test.c   Tests of the error module
 │   └── example_test.c Tests of the example module
 ├── vendor/unity/      Unity, copied in (no download at build time)
 ├── compile_flags.txt  clangd / LSP config
+├── rename.sh          Renames mylib, then deletes itself
 └── Makefile
 ```
 
@@ -63,7 +67,11 @@ Say the module is called `parser`:
    C has no namespaces, so this keeps the names of the library from colliding
    with those of the program that uses it. Helpers used only inside a `.c`
    file should be `static`.
-3. Create `tests/parser_test.c` with `static` test functions and one public
+3. Functions that can fail return a `MylibError` and give their result
+   through an out parameter, written only on success: see
+   `mylib_parse_number`. Add new codes to `include/mylib/error.h` and to the
+   `switch` of `src/error.c`; the compiler warns if one is missing.
+4. Create `tests/parser_test.c` with `static` test functions and one public
    function that runs them:
 
    ```c
@@ -80,24 +88,31 @@ Say the module is called `parser`:
    }
    ```
 
-4. Declare `void parser_tests(void);` in `tests/tests.h` and call
+5. Declare `void parser_tests(void);` in `tests/tests.h` and call
    `parser_tests();` in `tests/main.c`.
 
-## Renaming the library
+### Assertion macros
 
-`mylib` appears in the folder `include/mylib/`, in the `LIB` variable of the
-Makefile and in the `mylib_` / `MYLIB_` prefixes. To rename it to `foo`:
+When many tests call the same function and check the same things, write a
+macro next to them rather than a helper function, like `ASSERT_PARSES` and
+`ASSERT_PARSE_FAILS` in `tests/example_test.c`: Unity reports a failure at the
+line where the assertion is written, so in a helper every failure would point
+to the helper, while in a macro it points to the test.
 
-```sh
-git mv include/mylib include/foo
-grep -rlI --exclude-dir=.git --exclude-dir=vendor -e mylib -e MYLIB . \
-  | xargs sed -i.bak -e 's/mylib/foo/g' -e 's/MYLIB/FOO/g'
-find . -name '*.bak' -delete
+```c
+#define ASSERT_PARSE_FAILS(expected_error, text)                         \
+    do {                                                                 \
+        int out = -1;                                                    \
+        TEST_ASSERT_EQUAL_INT((expected_error),                          \
+                              mylib_parse_number((text), &out));         \
+        TEST_ASSERT_EQUAL_INT_MESSAGE(-1, out, "out written on failure"); \
+    } while (0)
+
+ASSERT_PARSE_FAILS(MYLIB_ERR_NOT_A_NUMBER, "4x2");
 ```
 
-(`sed -i.bak` works with both the macOS and the GNU `sed`.)
-
-Then rename `example` to the real first module of your library.
+`do { ... } while (0)` turns the body into a single statement, so the macro
+behaves like a function call, even after an `if` without braces.
 
 ## Unity
 
@@ -118,3 +133,25 @@ in sync with the Makefile when you add `-I` paths or warnings.
 
 On GitHub, mark this repo as a *Template repository* in the settings. New
 projects get a clean copy without inheriting the git history.
+
+<!-- rename:start -->
+### Renaming the library
+
+The library is called `mylib`: in `include/mylib/`, in the `LIB` variable of
+the Makefile and in the `mylib_` / `MYLIB_` prefixes. In a new project, give it
+its real name, here `foo`:
+
+```sh
+./rename.sh foo
+make clean tests
+git commit -am "Rename the library to foo"
+```
+
+The script replaces `mylib`, `Mylib` and `MYLIB` everywhere except in
+`vendor/` and `build/`, and moves `include/mylib/` to `include/foo/`. Then it
+deletes itself and this section of the README, which are no longer needed. In
+a git repository, it refuses to run with uncommitted changes, so that the
+rename can be reviewed with `git diff` and undone with `git checkout`.
+<!-- rename:end -->
+
+Then rename `example` to the real first module of your library.

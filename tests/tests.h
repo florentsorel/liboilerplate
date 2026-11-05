@@ -28,6 +28,7 @@ extern bool tests_list_only;
 
 // One function per module, defined in tests/<module>_test.c, which runs the
 // tests of that module. main() calls each of them.
+void error_tests(void);
 void example_tests(void);
 
 #endif
