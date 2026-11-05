@@ -1,2 +1,7 @@
 build/
 .cache/
+
+# macOS: Finder metadata, and debug symbols written next to a binary
+# compiled with -g (cc -g foo.c -o foo creates foo.dSYM/).
+.DS_Store
+*.dSYM/
