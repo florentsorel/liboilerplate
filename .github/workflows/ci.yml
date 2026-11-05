@@ -16,10 +16,18 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # gcc on Linux, clang on macOS: each compiler catches different things.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        mode: [debug, release]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
       - name: Build
-        run: make build
-      - name: Run tests
-        run: make test
+        run: make MODE=${{ matrix.mode }}
+      - name: Run the example
+        run: make MODE=${{ matrix.mode }} run
+      - name: Run the tests
+        run: make MODE=${{ matrix.mode }} tests
