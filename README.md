@@ -1,8 +1,10 @@
 # C Library Boilerplate
 
-A minimal starter for a C99 static library, with unit tests via
-[Unity](https://github.com/ThrowTheSwitch/Unity), sanitizers in debug builds
-and strict warnings.
+A minimal starter for a C99 static library built with CMake, with unit tests
+via [Unity](https://github.com/ThrowTheSwitch/Unity), sanitizers in debug
+builds and strict warnings.
+
+Requires CMake 3.25 or later and a C compiler (clang or gcc).
 
 ## Project structure
 
@@ -21,48 +23,66 @@ and strict warnings.
 │   ├── tests.h        RUN() macro and one suite function per module
 │   ├── error_test.c   Tests of the error module
 │   └── example_test.c Tests of the example module
-├── vendor/unity/      Unity, copied in (no download at build time)
-├── compile_flags.txt  clangd / LSP config
+├── CMakeLists.txt     What to build: the library, the example, the tests
+├── CMakePresets.json  How to build it: debug and release
 ├── rename.sh          Renames mylib, then deletes itself
-└── Makefile
+└── .github/workflows/ CI on Linux (gcc) and macOS (clang)
 ```
 
-Everything is built into `build/<mode>/`:
+## Building
 
-| File                   | What it is                                   |
-| ---------------------- | -------------------------------------------- |
-| `libmylib.a`           | The library                                  |
-| `example`              | The example program, linked against the .a   |
-| `tests`                | The test runner, linked against the .a       |
-| `obj/`                 | Object files, and .d files listing headers   |
+```sh
+cmake --workflow --preset debug     # configure, build, run the tests
+```
 
-## Make targets
+Two presets, each with its own build folder:
 
-| Command                     | What it does                                       |
-| --------------------------- | -------------------------------------------------- |
-| `make`                      | Build the library, the example and the tests       |
-| `make run`                  | Build and run the example                          |
-| `make tests`                | Build and run all the tests                        |
-| `make tests ARGS="-f add"`  | Only the tests whose name contains `add`           |
-| `make tests ARGS="-x add"`  | Skip the tests whose name contains `add`           |
-| `make tests ARGS="-l"`      | List the tests                                     |
-| `make MODE=release ...`     | Optimized build, without sanitizers                |
-| `make clean`                | Delete `build/`                                    |
+| Preset    | Folder           | Flags                                                |
+| --------- | ---------------- | ---------------------------------------------------- |
+| `debug`   | `build/`         | `-g`, AddressSanitizer, UndefinedBehaviorSanitizer   |
+| `release` | `build-release/` | `-O3 -DNDEBUG`, no sanitizers                        |
 
-The default mode is `debug`: `-g -O0` with AddressSanitizer and
-UndefinedBehaviorSanitizer, which stop the program on the first out-of-bounds
-access or undefined behaviour. Use the debug binaries in a debugger:
-`build/debug/tests` and `build/debug/example`.
+In debug, the sanitizers stop the program on the first out-of-bounds access
+or undefined behaviour.
 
-Only files that changed are recompiled, including when a header they include
-changes.
+`--workflow` chains the three steps, which can also be run one by one:
+
+| Command                            | What it does                                   |
+| ---------------------------------- | ---------------------------------------------- |
+| `cmake --preset debug`             | Configure: generate `build/`, download Unity   |
+| `cmake --build --preset debug`     | Build what changed                             |
+| `ctest --preset debug`             | Run the tests and the example                  |
+| `cmake --build --preset debug -v`  | Build, showing the full compiler commands      |
+| `rm -rf build`                     | Start from scratch                             |
+
+Configuring is needed once per folder; after that, `cmake --build` notices
+on its own when `CMakeLists.txt` changes. Only the files that changed are
+recompiled, including when a header they include changes.
+
+The programs are in the build folder:
+
+| File               | What it is                                            |
+| ------------------ | ----------------------------------------------------- |
+| `build/libmylib.a` | The library                                           |
+| `build/example`    | The example program, linked against the library       |
+| `build/tests`      | The test runner, linked against the library and Unity |
+
+`ctest` only says whether the runner passed; run it directly to choose the
+tests, or to use it in a debugger:
+
+```sh
+./build/tests              # every test, one line each
+./build/tests -f parse     # only the tests whose name contains "parse"
+./build/tests -x parse     # all but those
+./build/tests -l           # list the tests
+```
 
 ## Adding a module
 
 Say the module is called `parser`:
 
-1. Create `include/mylib/parser.h` and `src/parser.c`. The Makefile picks up
-   every `src/*.c` file, so there is nothing to add there.
+1. Create `include/mylib/parser.h` and `src/parser.c`, and add
+   `src/parser.c` to `add_library(mylib ...)` in `CMakeLists.txt`.
 2. Prefix every public name with `mylib_` (`mylib_parse`, `MylibParser`...):
    C has no namespaces, so this keeps the names of the library from colliding
    with those of the program that uses it. Helpers used only inside a `.c`
@@ -88,8 +108,12 @@ Say the module is called `parser`:
    }
    ```
 
-5. Declare `void parser_tests(void);` in `tests/tests.h` and call
-   `parser_tests();` in `tests/main.c`.
+5. Add `tests/parser_test.c` to `add_executable(tests ...)` in
+   `CMakeLists.txt`, declare `void parser_tests(void);` in `tests/tests.h` and
+   call `parser_tests();` in `tests/main.c`.
+
+CMake wants the files listed by hand: with a pattern such as `src/*.c`, it
+would not notice a new file until configured again.
 
 ### Assertion macros
 
@@ -116,18 +140,30 @@ behaves like a function call, even after an `if` without braces.
 
 ## Unity
 
-Unity's three files and its license are copied into `vendor/unity/`: the
-build needs no network and always uses the same version. To upgrade, replace
-them with the files from `src/` of a
-[Unity release](https://github.com/ThrowTheSwitch/Unity/releases).
+Unity is not in the repository: CMake downloads the release named in
+`CMakeLists.txt` the first time it configures a build folder, into
+`build/_deps/`. The build stops if the archive does not match its SHA-256,
+`URL_HASH`: what is compiled is always the code that was chosen. Configuring
+a new build folder needs the network; building does not.
 
-Unity is compiled on its own, without the strict warnings of the project,
-which it is not written for.
+To upgrade, change the version in the URL, then `URL_HASH`, given by:
+
+```sh
+curl -sL https://github.com/ThrowTheSwitch/Unity/archive/refs/tags/vX.Y.Z.tar.gz | shasum -a 256
+```
+
+Unity is compiled with its own options, without the strict warnings of the
+project, which it is not written for.
+
+The example and the tests are only built when the library is the main
+project (`MYLIB_BUILD_TESTS`): a project that pulls the library in with
+`FetchContent` or `add_subdirectory` gets the library alone, without
+downloading Unity.
 
 ## LSP
 
-`compile_flags.txt` tells clangd which include paths and flags to use. Keep it
-in sync with the Makefile when you add `-I` paths or warnings.
+CMake writes `build/compile_commands.json`, with the exact flags of every
+file. clangd finds it on its own once `cmake --preset debug` has run.
 
 ## Using as a template
 
@@ -137,18 +173,20 @@ projects get a clean copy without inheriting the git history.
 <!-- rename:start -->
 ### Renaming the library
 
-The library is called `mylib`: in `include/mylib/`, in the `LIB` variable of
-the Makefile and in the `mylib_` / `MYLIB_` prefixes. In a new project, give it
-its real name, here `foo`:
+The library is called `mylib`: in `include/mylib/`, in `CMakeLists.txt` and
+in the `mylib_` / `Mylib` / `MYLIB_` prefixes. In a new project, give it its
+real name, here `foo`:
 
 ```sh
 ./rename.sh foo
-make clean tests
+rm -rf build build-release
+cmake --workflow --preset debug
 git commit -am "Rename the library to foo"
 ```
 
-The script replaces `mylib`, `Mylib` and `MYLIB` everywhere except in
-`vendor/` and `build/`, and moves `include/mylib/` to `include/foo/`. Then it
+The script replaces `mylib`, `Mylib` and `MYLIB` everywhere except in the
+build folders (`my_parser` gives `my_parser_`, `MyParser` and `MY_PARSER_`),
+and moves `include/mylib/` to `include/foo/`. Then it
 deletes itself and this section of the README, which are no longer needed. In
 a git repository, it refuses to run with uncommitted changes, so that the
 rename can be reviewed with `git diff` and undone with `git checkout`.

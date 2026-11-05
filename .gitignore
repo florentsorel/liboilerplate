@@ -1,4 +1,5 @@
 build/
+build-release/
 .cache/
 
 # macOS: Finder metadata, and debug symbols written next to a binary

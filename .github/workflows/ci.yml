@@ -21,13 +21,15 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        mode: [debug, release]
+        preset: [debug, release]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
+      # Configure, build, then run the tests and the example with ctest.
+      # --verbose in the build shows the full compiler commands in the logs.
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
       - name: Build
-        run: make MODE=${{ matrix.mode }}
-      - name: Run the example
-        run: make MODE=${{ matrix.mode }} run
-      - name: Run the tests
-        run: make MODE=${{ matrix.mode }} tests
+        run: cmake --build --preset ${{ matrix.preset }} --verbose
+      - name: Test
+        run: ctest --preset ${{ matrix.preset }}

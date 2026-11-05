@@ -59,8 +59,8 @@ sed -i.bak \
     README.md
 rm README.md.bak
 
-# Every text file that mentions the old name, except vendored code, build
-# output and this script. (sed -i.bak works with both BSD and GNU sed.)
+# Every text file that mentions the old name, except the build folders and
+# this script. (sed -i.bak works with both BSD and GNU sed.)
 count=0
 while IFS= read -r -d '' file; do
     if grep -Iq -e "$old" -e "$old_capitalized" -e "$old_upper" "$file"; then
@@ -73,7 +73,7 @@ while IFS= read -r -d '' file; do
         echo "  updated $file"
         count=$((count + 1))
     fi
-done < <(find . \( -name .git -o -name vendor -o -name build \) -prune \
+done < <(find . \( -name .git -o -name build -o -name build-release \) -prune \
     -o -type f ! -path ./rename.sh -print0)
 
 if $in_git; then
@@ -87,4 +87,6 @@ fi
 echo
 echo "Renamed $old to $new in $count files, moved include/$old/ to include/$new/."
 echo "Deleted rename.sh and the renaming section of the README."
-echo "Next: review the changes, run \"make clean tests\", then commit."
+echo "Next: review the changes, then from a clean build folder:"
+echo "  rm -rf build build-release"
+echo "  cmake --workflow --preset debug"
